@@ -60,6 +60,7 @@ if (require.main === module) {
 
 module.exports = {
   server,
+  getMunicipalityPricePayload,
   parseRankingHtml,
   parseCityAverages,
   cleanHtmlText,
