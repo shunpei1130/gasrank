@@ -7,6 +7,10 @@ const PORT = Number(process.env.PORT || 4173);
 const CACHE_TTL_MS = 10 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 8000;
 const cache = new Map();
+const OVERPASS_ENDPOINTS = [
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass-api.de/api/interpreter",
+];
 
 const CONTENT_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -42,6 +46,11 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
+    if (requestUrl.pathname === "/api/overpass") {
+      await handleOverpassApi(requestUrl, response);
+      return;
+    }
+
     serveStaticFile(requestUrl.pathname, response);
   } catch (error) {
     console.error("server request failed", error);
@@ -61,6 +70,7 @@ if (require.main === module) {
 module.exports = {
   server,
   getMunicipalityPricePayload,
+  getOverpassPayload,
   parseRankingHtml,
   parseCityAverages,
   cleanHtmlText,
@@ -96,6 +106,39 @@ async function handlePriceApi(requestUrl, response) {
     sendJson(response, 502, {
       error: "price_lookup_failed",
       message: "\u5730\u57df\u4fa1\u683c\u306e\u53d6\u5f97\u306b\u5931\u6557\u3057\u307e\u3057\u305f\u3002",
+    });
+  }
+}
+
+async function handleOverpassApi(requestUrl, response) {
+  const lat = Number(requestUrl.searchParams.get("lat"));
+  const lng = Number(requestUrl.searchParams.get("lng"));
+  const radiusKm = Number(requestUrl.searchParams.get("radiusKm") || "5");
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    sendJson(response, 400, {
+      error: "invalid_coordinates",
+      message: "現在地の座標が不正です。",
+    });
+    return;
+  }
+
+  if (!Number.isFinite(radiusKm) || radiusKm <= 0 || radiusKm > 30) {
+    sendJson(response, 400, {
+      error: "invalid_radius",
+      message: "検索半径が不正です。",
+    });
+    return;
+  }
+
+  try {
+    const payload = await getOverpassPayload({ lat, lng, radiusKm });
+    sendJson(response, 200, payload);
+  } catch (error) {
+    console.error("overpass api failed", error);
+    sendJson(response, 502, {
+      error: "overpass_lookup_failed",
+      message: "周辺スタンド情報の取得に失敗しました。",
     });
   }
 }
@@ -161,6 +204,47 @@ async function getMunicipalityPricePayload({ lat, lng, fuelType }) {
   };
 }
 
+async function getOverpassPayload({ lat, lng, radiusKm }) {
+  const radiusMeters = Math.round(radiusKm * 1000);
+  const query = `
+[out:json][timeout:8];
+(
+  node["amenity"="fuel"](around:${radiusMeters},${lat},${lng});
+  way["amenity"="fuel"](around:${radiusMeters},${lat},${lng});
+  relation["amenity"="fuel"](around:${radiusMeters},${lat},${lng});
+);
+out center tags;
+`.trim();
+
+  const cacheKey = `overpass:${lat.toFixed(4)}:${lng.toFixed(4)}:${radiusMeters}`;
+  const cached = cacheGet(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  let lastError = null;
+
+  for (const endpoint of OVERPASS_ENDPOINTS) {
+    try {
+      const response = await fetchWithTimeout(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+        },
+        body: new URLSearchParams({ data: query }),
+      });
+      const payload = await response.json();
+      cacheSet(cacheKey, payload);
+      return payload;
+    } catch (error) {
+      lastError = error;
+      console.warn("overpass upstream failed", endpoint, error?.message || error);
+    }
+  }
+
+  throw lastError || new Error("overpass_lookup_failed");
+}
+
 async function fetchJsonWithCache(cacheKey, url) {
   const cached = cacheGet(cacheKey);
   if (cached) {
@@ -214,15 +298,17 @@ async function fetchText(url) {
   return readTextResponse(response);
 }
 
-async function fetchWithTimeout(url) {
+async function fetchWithTimeout(url, options = {}) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort("request_timeout"), REQUEST_TIMEOUT_MS);
 
   try {
     const response = await fetch(url, {
+      ...options,
       headers: {
         "Accept-Language": "ja-JP,ja;q=0.9,en;q=0.7",
         "User-Agent": "GasRankLocal/1.0 (+http://localhost)",
+        ...(options.headers || {}),
       },
       signal: controller.signal,
     });

@@ -1,5 +1,6 @@
-const STORAGE_KEY = "gasrank-form-v1";
+﻿const STORAGE_KEY = "gasrank-form-v1";
 const MAX_RESULTS = 20;
+const MAX_VISIBLE_RESULTS = 5;
 const DEFAULT_FORM = {
   fuelType: "regular",
   efficiency: "12",
@@ -18,9 +19,21 @@ const FUEL_LABELS = {
 };
 
 const PRICE_TYPE_LABELS = {
-  cash: "\u73fe\u91d1",
-  member: "\u4f1a\u54e1",
-  appMember: "\u30a2\u30d7\u30ea\u4f1a\u54e1",
+  cash: "現金",
+  member: "会員",
+  appMember: "アプリ会員",
+};
+
+const OPENING_DAY_ORDER = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+const OPENING_DAY_LABELS = {
+  Mo: "月曜",
+  Tu: "火曜",
+  We: "水曜",
+  Th: "木曜",
+  Fr: "金曜",
+  Sa: "土曜",
+  Su: "日曜",
+  PH: "祝日",
 };
 
 const BASE_PRICES = {
@@ -45,13 +58,8 @@ const PRICE_TYPE_DISCOUNTS = {
   appMember: 4,
 };
 
-const overpassEndpoints = [
-  "https://overpass.kumi.systems/api/interpreter",
-  "https://overpass-api.de/api/interpreter",
-];
-
 const OVERPASS_TIMEOUT_MS = 5500;
-const PRICE_API_BASE = getPriceApiBase();
+const API_BASE = getApiBase();
 
 const state = {
   loading: false,
@@ -65,7 +73,9 @@ const state = {
   dataSource: "idle",
   activeMapStationId: null,
   isSearchPanelCollapsed: false,
+  isSearchDialogOpen: false,
   isMapExpanded: true,
+  mobileResultsMode: "recommended",
   priceCoverage: {
     actual: 0,
     market: 0,
@@ -75,20 +85,27 @@ const state = {
 
 const elements = {
   searchPanel: document.querySelector("#searchPanel"),
+  searchLauncher: document.querySelector("#searchLauncher"),
+  searchLauncherButton: document.querySelector("#searchLauncherButton"),
   searchForm: document.querySelector("#searchForm"),
+  searchPanelBody: document.querySelector("#searchPanelBody"),
   toggleSearchPanelButton: document.querySelector("#toggleSearchPanelButton"),
+  searchPanelCloseButton: document.querySelector("#searchPanelCloseButton"),
   searchPanelSummary: document.querySelector("#searchPanelSummary"),
+  searchModalBackdrop: document.querySelector("#searchModalBackdrop"),
   locateButton: document.querySelector("#locateButton"),
   searchButton: document.querySelector("#searchButton"),
   validationMessage: document.querySelector("#validationMessage"),
   locationText: document.querySelector("#locationText"),
+  recommendedResultPanel: document.querySelector("#recommendedResultPanel"),
+  comparisonCarouselPanel: document.querySelector("#comparisonCarouselPanel"),
   resultsList: document.querySelector("#resultsList"),
-  resultsBanner: document.querySelector("#resultsBanner"),
   resultMapPanel: document.querySelector("#resultMapPanel"),
-  searchSummary: document.querySelector("#searchSummary"),
   sortTabs: document.querySelector("#sortTabs"),
   stationDialog: document.querySelector("#stationDialog"),
   dialogContent: document.querySelector("#dialogContent"),
+  mobileMapSheet: document.querySelector("#mobileMapSheet"),
+  mobileMapSheetContent: document.querySelector("#mobileMapSheetContent"),
 };
 
 init();
@@ -101,9 +118,16 @@ function init() {
   renderSearchPanel();
 }
 
+function isMobileViewport() {
+  return window.matchMedia("(max-width: 960px)").matches;
+}
+
 function bindEvents() {
+  elements.searchLauncherButton.addEventListener("click", handleLocateClick);
   elements.locateButton.addEventListener("click", handleLocateClick);
   elements.toggleSearchPanelButton.addEventListener("click", toggleSearchPanel);
+  elements.searchPanelCloseButton.addEventListener("click", closeSearchDialog);
+  elements.searchModalBackdrop.addEventListener("click", closeSearchDialog);
   elements.searchForm.addEventListener("submit", handleSearchSubmit);
   elements.searchForm.addEventListener("change", () => {
     persistForm();
@@ -120,8 +144,69 @@ function bindEvents() {
     renderSortTabs();
     renderResults();
   });
+  elements.searchPanelSummary.addEventListener("click", handleResultCardClick);
+  elements.recommendedResultPanel.addEventListener("click", handleResultCardClick);
+  elements.comparisonCarouselPanel.addEventListener("click", handleResultCardClick);
   elements.resultsList.addEventListener("click", handleResultCardClick);
+  elements.resultMapPanel.addEventListener("click", handleResultCardClick);
+  elements.dialogContent.addEventListener("click", handleDialogClick);
+  elements.mobileMapSheet.addEventListener("click", handleMobileMapSheetClick);
+  elements.mobileMapSheet.addEventListener("close", handleMobileMapSheetClose);
+  elements.stationDialog.addEventListener("click", handleStationDialogBackdropClick);
+  document.addEventListener("wheel", handleGlobalWheelScroll, { passive: false, capture: true });
   window.addEventListener("resize", handleViewportChange);
+}
+
+function handleGlobalWheelScroll(event) {
+  if (Math.abs(event.deltaY) <= Math.abs(event.deltaX) || event.shiftKey) {
+    return;
+  }
+
+  const target = event.target instanceof Element ? event.target : null;
+  if (!target) {
+    return;
+  }
+
+  const modalScope = target.closest(".search-panel.is-modal-open, dialog[open]");
+  if (modalScope) {
+    return;
+  }
+
+  const scrollableAncestor = findVerticalScrollableAncestor(target);
+  if (scrollableAncestor && scrollableAncestor !== document.body && scrollableAncestor !== document.documentElement) {
+    return;
+  }
+
+  const assistZone = target.closest(
+    ".panel, .comparison-carousel-track, .comparison-carousel-panel, .sort-tabs, .result-card, .map-panel"
+  );
+  if (!assistZone) {
+    return;
+  }
+
+  window.scrollBy({
+    top: event.deltaY,
+    behavior: "auto",
+  });
+  event.preventDefault();
+}
+
+function findVerticalScrollableAncestor(startElement) {
+  let current = startElement;
+
+  while (current && current !== document.body) {
+    const style = window.getComputedStyle(current);
+    const overflowY = style.overflowY === "visible" ? style.overflow : style.overflowY;
+    const canScrollY = /(auto|scroll|overlay)/.test(overflowY);
+
+    if (canScrollY && current.scrollHeight > current.clientHeight + 1) {
+      return current;
+    }
+
+    current = current.parentElement;
+  }
+
+  return document.scrollingElement || document.documentElement;
 }
 
 function hydrateForm() {
@@ -185,10 +270,17 @@ function syncWageInputState() {
 
 async function handleLocateClick() {
   elements.validationMessage.textContent = "";
+
+  if (state.location && !state.isSearchDialogOpen) {
+    openSearchDialog();
+    return;
+  }
+
   try {
     setLoading(true, "現在地を取得しています…");
     const location = await getCurrentLocation();
     setLocation(location);
+    openSearchDialog();
   } catch (error) {
     elements.validationMessage.textContent = normalizeLocationError(error);
   } finally {
@@ -232,15 +324,17 @@ async function handleSearchSubmit(event) {
     };
     state.results = ranked;
     state.activeMapStationId = ranked[0]?.id || null;
+    state.mobileResultsMode = "recommended";
     if (isMobileViewport()) {
       state.isSearchPanelCollapsed = true;
       state.isMapExpanded = false;
     }
     state.errorMessage = "";
+    closeSearchDialog(true);
   } catch (error) {
     console.error(error);
     state.results = [];
-    state.errorMessage = "検索に失敗しました。通信状況を確認して再度お試しください。";
+    state.errorMessage = "検索に失敗しました。再度お試しください。";
   } finally {
     setLoading(false);
     renderSortTabs();
@@ -257,23 +351,33 @@ function setLocation(location) {
 function setLoading(loading, message = "") {
   state.loading = loading;
   state.loadingMessage = message;
+  elements.searchLauncherButton.disabled = loading;
   elements.searchButton.disabled = loading;
   elements.locateButton.disabled = loading;
   elements.toggleSearchPanelButton.disabled = loading;
-  elements.searchButton.textContent = loading
-    ? "\u691c\u7d22\u4e2d\u2026"
-    : "\u5b9f\u8cea\u6700\u5b89\u3092\u691c\u7d22";
+  elements.searchPanelCloseButton.disabled = loading;
+  elements.searchLauncherButton.textContent = loading ? "取得中…" : "現在地を取得";
+  elements.searchButton.classList.toggle("is-loading", loading);
+  elements.searchButton.setAttribute("aria-busy", loading ? "true" : "false");
+  elements.searchButton.innerHTML = loading
+    ? `<span class="button-loading"><span class="button-loading-spinner" aria-hidden="true"></span><span>10秒ほどお待ちください。</span></span>`
+    : "\u691c\u7d22";
   renderSearchPanel();
   renderResults();
 }
 
 function handleViewportChange() {
-  if (!isMobileViewport()) {
-    state.isSearchPanelCollapsed = false;
-    state.isMapExpanded = true;
-  } else if (!state.results.length) {
-    state.isSearchPanelCollapsed = false;
+  if (isMobileViewport()) {
     state.isMapExpanded = false;
+    if (!state.results.length) {
+      state.mobileResultsMode = "recommended";
+    }
+  } else {
+    state.isMapExpanded = true;
+    if (state.results.length) {
+      state.mobileResultsMode = "list";
+    }
+    closeMobileMapSheet();
   }
 
   renderSearchPanel();
@@ -281,23 +385,41 @@ function handleViewportChange() {
 }
 
 function toggleSearchPanel() {
-  state.isSearchPanelCollapsed = !state.isSearchPanelCollapsed;
+  if (state.isSearchDialogOpen) {
+    closeSearchDialog();
+  } else {
+    openSearchDialog();
+  }
   renderSearchPanel();
 }
 
 function renderSearchPanel() {
-  const isCollapsed = isMobileViewport() && state.isSearchPanelCollapsed && !!state.lastSearch;
-  elements.searchPanel.classList.toggle("is-collapsed", isCollapsed);
-  elements.toggleSearchPanelButton.textContent = isCollapsed ? "条件を開く" : "条件をたたむ";
+  const hasSearchSummary = !!state.lastSearch;
+  const showSummary = !state.isSearchDialogOpen && hasSearchSummary;
+  const hasLocation = !!state.location;
+  const isInitialLauncher = !state.isSearchDialogOpen && !hasLocation && !hasSearchSummary;
 
-  if (!state.lastSearch) {
+  elements.searchPanel.classList.toggle("is-modal-open", state.isSearchDialogOpen);
+  elements.searchPanel.classList.toggle("is-compact", !state.isSearchDialogOpen);
+  elements.searchPanel.classList.toggle("is-initial-launcher", isInitialLauncher);
+  elements.searchLauncher.hidden = !isInitialLauncher;
+  elements.searchPanelBody.hidden = !state.isSearchDialogOpen;
+  elements.searchModalBackdrop.classList.toggle("active", state.isSearchDialogOpen);
+  elements.toggleSearchPanelButton.hidden = true;
+  elements.searchPanelCloseButton.hidden = !state.isSearchDialogOpen;
+  elements.locateButton.textContent = hasLocation && !state.isSearchDialogOpen ? "条件を開く" : "現在地を取得";
+  elements.locateButton.classList.toggle("open-button", hasLocation && !state.isSearchDialogOpen);
+
+  if (!showSummary) {
     elements.searchPanelSummary.innerHTML = "";
     return;
   }
 
   elements.searchPanelSummary.innerHTML = `
-    <p class="mobile-summary-title">Quick Setup</p>
-    <p class="mobile-summary-text">${escapeHtml(buildMobileSearchSummary(state.lastSearch))}</p>
+    <div class="mobile-summary-row">
+      <p class="mobile-summary-text">${escapeHtml(buildMobileSearchSummary(state.lastSearch))}</p>
+      <button type="button" class="ghost-button summary-edit-button" data-open-search-panel="true">条件変更</button>
+    </div>
   `;
 }
 
@@ -355,7 +477,6 @@ function getCurrentLocation() {
     );
   });
 }
-
 function normalizeLocationError(error) {
   if (error?.code === 1) {
     return "現在地を取得できませんでした。位置情報を許可してください。";
@@ -369,46 +490,33 @@ function normalizeLocationError(error) {
 }
 
 async function fetchNearbyStations(location, radiusKm) {
-  const query = `
-[out:json][timeout:8];
-(
-  node["amenity"="fuel"](around:${Math.round(radiusKm * 1000)},${location.lat},${location.lng});
-  way["amenity"="fuel"](around:${Math.round(radiusKm * 1000)},${location.lat},${location.lng});
-  relation["amenity"="fuel"](around:${Math.round(radiusKm * 1000)},${location.lat},${location.lng});
-);
-out center tags;
-`;
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort("overpass_timeout"), OVERPASS_TIMEOUT_MS);
 
   let payload = null;
-  for (const endpoint of overpassEndpoints) {
-    const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort("overpass_timeout"), OVERPASS_TIMEOUT_MS);
 
-    try {
-      const response = await fetch(endpoint, {
-        method: "POST",
-        body: new URLSearchParams({ data: query.trim() }),
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
-        },
+  try {
+    const baseUrl = API_BASE ? `${API_BASE}/api/overpass` : "/api/overpass";
+    const response = await fetch(
+      `${baseUrl}?lat=${encodeURIComponent(location.lat)}&lng=${encodeURIComponent(
+        location.lng
+      )}&radiusKm=${encodeURIComponent(radiusKm)}`,
+      {
         signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        console.warn("overpass endpoint returned non-ok status", endpoint, response.status);
-        continue;
       }
+    );
 
-      payload = await response.json();
-      break;
-    } catch (error) {
-      clearTimeout(timeoutId);
-      if (error?.name === "AbortError") {
-        continue;
-      }
-      console.warn("overpass fetch failed", endpoint, error);
+    if (!response.ok) {
+      throw new Error(`overpass_proxy_status_${response.status}`);
     }
+
+    payload = await response.json();
+  } catch (error) {
+    if (error?.name !== "AbortError") {
+      console.warn("overpass lookup failed", error);
+    }
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   if (!payload?.elements?.length) {
@@ -425,7 +533,7 @@ out center tags;
 
 async function fetchMunicipalityPriceData(location, fuelType) {
   try {
-    const baseUrl = PRICE_API_BASE ? `${PRICE_API_BASE}/api/prices` : "/api/prices";
+    const baseUrl = API_BASE ? `${API_BASE}/api/prices` : "/api/prices";
     const response = await fetch(
       `${baseUrl}?lat=${encodeURIComponent(location.lat)}&lng=${encodeURIComponent(
         location.lng
@@ -448,7 +556,7 @@ async function fetchMunicipalityPriceData(location, fuelType) {
   }
 }
 
-function getPriceApiBase() {
+function getApiBase() {
   const configured = window.GASRANK_API_BASE;
   if (!configured) {
     return "";
@@ -497,13 +605,13 @@ function matchStationsToMunicipalityShops(stations, shops) {
 
   for (const station of stations) {
     for (const shop of shops) {
-      const score = scorePriceMatch(station, shop);
-      if (score >= 0.48) {
+      const match = scorePriceMatch(station, shop);
+      if (match.accepted) {
         candidates.push({
           stationId: station.id,
           shopId: shop.shopId,
           shop,
-          score,
+          score: match.score,
         });
       }
     }
@@ -531,43 +639,155 @@ function matchStationsToMunicipalityShops(stations, shops) {
   return matches;
 }
 
+function openSearchDialog() {
+  state.isSearchDialogOpen = true;
+  renderSearchPanel();
+}
+
+function closeSearchDialog(force = false) {
+  if (state.loading && !force) {
+    return;
+  }
+
+  state.isSearchDialogOpen = false;
+  renderSearchPanel();
+}
+
 function scorePriceMatch(station, shop) {
   const stationName = normalizeMatchText(station.name);
+  const stationExtendedName = normalizeMatchText(
+    `${station.brandLabel || ""} ${station.operator || ""} ${station.name || ""}`
+  );
   const shopName = normalizeMatchText(shop.name);
   const stationAddress = normalizeAddressText(station.address);
   const shopAddress = normalizeAddressText(shop.address);
-  const stationCombined = `${stationName}${stationAddress}`;
-  const shopCombined = `${shopName}${shopAddress}`;
+  const stationAddressTail = extractAddressTail(stationAddress);
+  const shopAddressTail = extractAddressTail(shopAddress);
+  const stationCombined = `${stationExtendedName}${stationAddressTail}`;
+  const shopCombined = `${shopName}${shopAddressTail}`;
 
-  const nameSimilarity = compareMatchText(stationName, shopName);
+  const primaryNameSimilarity = compareMatchText(stationName, shopName);
+  const extendedNameSimilarity = compareMatchText(stationExtendedName, shopName);
+  const nameSimilarity = Math.max(primaryNameSimilarity, extendedNameSimilarity);
   const addressSimilarity = compareMatchText(stationAddress, shopAddress);
+  const addressTailSimilarity = compareMatchText(stationAddressTail, shopAddressTail);
   const combinedSimilarity = compareMatchText(stationCombined, shopCombined);
+  const stationAddressTokens = extractNumericTokens(stationAddress);
+  const shopAddressTokens = extractNumericTokens(shopAddress);
+  const stationBrand = normalizeBrandText(`${station.brand || ""} ${station.brandLabel || ""} ${station.operator || ""}`);
+  const shopBrand = normalizeBrandText(shop.name);
   const brandBonus =
-    normalizeBrandText(station.brand || station.name) &&
-    normalizeBrandText(station.brand || station.name) === normalizeBrandText(shop.name)
-      ? 0.08
-      : 0;
-  const addressNumberBonus = overlappingTokenRatio(
-    extractNumericTokens(stationAddress),
-    extractNumericTokens(shopAddress)
-  );
+    stationBrand && stationBrand === shopBrand ? 0.12 : 0;
+  const brandPenalty =
+    stationBrand && shopBrand && stationBrand !== shopBrand ? 0.16 : 0;
+  const addressNumberBonus = overlappingTokenRatio(stationAddressTokens, shopAddressTokens);
+  const addressSequenceBonus = hasMatchingTrailingAddressSequence(stationAddressTokens, shopAddressTokens) ? 0.12 : 0;
+  const genericStationName = isGenericMatchName(stationName);
+  const genericShopName = isGenericMatchName(shopName);
 
-  if (nameSimilarity < 0.24 && addressSimilarity < 0.18 && combinedSimilarity < 0.28) {
-    return 0;
+  if (brandPenalty && addressTailSimilarity < 0.42 && addressNumberBonus === 0) {
+    return { score: 0, accepted: false };
+  }
+
+  if (stationAddressTokens.length && shopAddressTokens.length && addressNumberBonus === 0 && addressTailSimilarity < 0.34) {
+    return { score: 0, accepted: false };
+  }
+
+  if (
+    genericStationName &&
+    genericShopName &&
+    (addressTailSimilarity < 0.55 || addressNumberBonus < 0.5)
+  ) {
+    return { score: 0, accepted: false };
+  }
+
+  if (nameSimilarity < 0.18 && addressSimilarity < 0.14 && addressTailSimilarity < 0.24) {
+    return { score: 0, accepted: false };
   }
 
   let score =
-    nameSimilarity * 0.56 +
-    addressSimilarity * 0.24 +
+    nameSimilarity * 0.34 +
+    addressSimilarity * 0.12 +
+    addressTailSimilarity * 0.22 +
     combinedSimilarity * 0.12 +
-    addressNumberBonus * 0.2 +
-    brandBonus;
+    addressNumberBonus * 0.14 +
+    addressSequenceBonus +
+    brandBonus -
+    brandPenalty;
 
-  if (stationName && shopName && (stationName === shopName || stationName.includes(shopName) || shopName.includes(stationName))) {
+  if (
+    stationName &&
+    shopName &&
+    (stationName === shopName || stationName.includes(shopName) || shopName.includes(stationName))
+  ) {
     score += 0.12;
   }
 
-  return Math.max(0, Math.min(score, 1));
+  if (addressTailSimilarity >= 0.86) {
+    score += 0.08;
+  }
+
+  if (addressNumberBonus >= 0.5) {
+    score += 0.06;
+  }
+
+  if (genericStationName && addressNumberBonus === 0 && addressTailSimilarity < 0.45) {
+    score -= 0.14;
+  }
+
+  const normalizedScore = Math.max(0, Math.min(score, 1));
+  const accepted =
+    normalizedScore >= 0.42 ||
+    (normalizedScore >= 0.36 &&
+      addressNumberBonus >= 0.5 &&
+      (brandBonus > 0 || addressTailSimilarity >= 0.72 || !genericShopName));
+
+  return {
+    score: normalizedScore,
+    accepted,
+  };
+}
+
+function extractNumericTokens(value) {
+  return String(value || "").match(/\d+/g) || [];
+}
+
+function overlappingTokenRatio(leftTokens, rightTokens) {
+  if (!leftTokens.length || !rightTokens.length) {
+    return 0;
+  }
+
+  const leftSet = new Set(leftTokens);
+  const rightSet = new Set(rightTokens);
+  let overlap = 0;
+
+  for (const token of leftSet) {
+    if (rightSet.has(token)) {
+      overlap += 1;
+    }
+  }
+
+  if (Math.min(leftSet.size, rightSet.size) >= 2 && overlap < 2) {
+    return 0;
+  }
+
+  return overlap / Math.max(leftSet.size, rightSet.size, 1);
+}
+
+function hasMatchingTrailingAddressSequence(leftTokens, rightTokens) {
+  if (!leftTokens.length || !rightTokens.length) {
+    return false;
+  }
+
+  const maxLength = Math.min(3, leftTokens.length, rightTokens.length);
+  const minLength = maxLength >= 2 ? 2 : 1;
+  for (let length = maxLength; length >= minLength; length -= 1) {
+    if (leftTokens.slice(-length).join("-") === rightTokens.slice(-length).join("-")) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function compareMatchText(left, right) {
@@ -590,11 +810,19 @@ function normalizeMatchText(value) {
   return String(value || "")
     .normalize("NFKC")
     .toLowerCase()
-    .replace(/\([^)]*\)|（[^）]*）/g, " ")
-    .replace(/株式会社|有限会社|合同会社|合名会社|合資会社/g, " ")
-    .replace(/\(株\)|（株）|\(有\)|（有）/g, " ")
-    .replace(/サービスステーション|ガソリンスタンド|給油所/g, " ")
+    .replace(/[（(][^()（）]*[)）]/g, " ")
+    .replace(/名称未登録スタンド|要確認/g, " ")
+    .replace(/アポロステーション|apollo\s*station|apollo/g, "apollostation")
+    .replace(/出光/g, "idemitsu")
+    .replace(/エネオス|enejet/g, "eneos")
+    .replace(/コスモ/g, "cosmo")
+    .replace(/シェル/g, "shell")
+    .replace(/全農|農協/g, "ja")
+    .replace(/株式会社|有限会社|合同会社|co\.?\s*,?\s*ltd\.?|ltd\.?|inc\.?|corp\.?/g, " ")
+    .replace(/サービスステーション|ガソリンスタンド|給油所|ドクタードライブ|dr\.?\s*drive|enejet|エクスプレス|express/g, " ")
+    .replace(/\bss\b|ｓｓ|セルフ|self|フルサービス/g, " ")
     .replace(/[\/・･]/g, " ")
+    .replace(/\s+/g, "")
     .replace(/[^\w\u3040-\u30ff\u3400-\u9fff]+/g, "")
     .trim();
 }
@@ -603,10 +831,13 @@ function normalizeAddressText(value) {
   return String(value || "")
     .normalize("NFKC")
     .toLowerCase()
-    .replace(/丁目/g, "-")
-    .replace(/番地/g, "-")
-    .replace(/番/g, "-")
-    .replace(/号/g, "")
+    .replace(/住所情報なし|要確認/g, "")
+    .replace(/[（(][^()（）]*[)）]/g, "")
+    .replace(/大字|字/g, "")
+    .replace(/丁目|番地|番|地割/g, "-")
+    .replace(/[号地]/g, "")
+    .replace(/[‐‑‒–—―ーｰ−]/g, "-")
+    .replace(/\d+f\b/g, "")
     .replace(/[^\w\u3040-\u30ff\u3400-\u9fff-]+/g, "")
     .replace(/-+/g, "-")
     .trim();
@@ -615,30 +846,36 @@ function normalizeAddressText(value) {
 function normalizeBrandText(value) {
   const text = normalizeMatchText(value);
 
-  if (text.includes("eneos") || text.includes("エネオス")) return "eneos";
-  if (text.includes("apollostation") || text.includes("apollo") || text.includes("出光") || text.includes("idemitsu")) {
-    return "apollostation";
-  }
-  if (text.includes("cosmo") || text.includes("コスモ")) return "cosmo";
-  if (text.includes("shell") || text.includes("シェル")) return "shell";
-  if (text === "ja" || text.includes("農協")) return "ja";
+  if (text.includes("eneos")) return "eneos";
+  if (text.includes("apollostation") || text.includes("apollo") || text.includes("idemitsu")) return "apollostation";
+  if (text.includes("cosmo")) return "cosmo";
+  if (text.includes("shell")) return "shell";
+  if (text === "ja" || text.includes("ja")) return "ja";
 
   return "";
 }
 
-function extractNumericTokens(value) {
-  return (String(value).match(/\d+/g) || []).filter(Boolean);
-}
-
-function overlappingTokenRatio(leftTokens, rightTokens) {
-  if (!leftTokens.length || !rightTokens.length) {
-    return 0;
+function extractAddressTail(value) {
+  const normalized = normalizeAddressText(value);
+  if (!normalized) {
+    return "";
   }
 
-  const rightSet = new Set(rightTokens);
-  const overlapCount = leftTokens.filter((token) => rightSet.has(token)).length;
+  const firstDigitIndex = normalized.search(/\d/);
+  if (firstDigitIndex >= 0) {
+    return normalized.slice(Math.max(0, firstDigitIndex - 6));
+  }
 
-  return overlapCount === 0 ? 0 : overlapCount / Math.max(leftTokens.length, rightTokens.length);
+  return normalized.slice(-12);
+}
+
+function isGenericMatchName(value) {
+  const stripped = String(value || "")
+    .replace(/eneos|idemitsu|apollostation|cosmo|shell|ja/g, "")
+    .replace(/self|セルフ|ss|drdrive|enejet|express/g, "")
+    .trim();
+
+  return stripped.length < 4;
 }
 
 function bigramSimilarity(left, right) {
@@ -688,20 +925,28 @@ function parseStationElement(element, userLocation) {
   }
 
   const tags = element.tags || {};
-  const brand = tags.brand || guessBrand(tags.name || "");
+  const operator = normalizeDisplayText(tags.operator);
+  const rawBrand = normalizeDisplayText(tags.brand);
+  const inferredBrand = rawBrand || guessBrand(tags.name || "") || "";
+  const openingHoursRaw = normalizeDisplayText(tags.opening_hours);
   const livePrices = parseLivePrices(tags);
   const geoDistanceKm = haversineKm(userLocation.lat, userLocation.lng, lat, lng);
 
   return {
     id: `${element.type}-${element.id}`,
-    name: tags.name || brand || "名称未登録スタンド",
-    brand: brand || "ブランド不明",
+    name: normalizeDisplayText(tags.name) || inferredBrand || "名称未登録スタンド",
+    brand: inferredBrand || "要確認",
+    brandLabel: rawBrand || operator || inferredBrand || "要確認",
+    operator: operator || "要確認",
     address: buildAddress(tags),
     lat,
     lng,
     geoDistanceKm,
     openStatus: deriveOpenStatus(tags),
-    openingHours: tags.opening_hours || "営業時間情報なし",
+    openingHoursRaw,
+    openingHoursLabel: formatOpeningHoursLabel(openingHoursRaw),
+    closedDaysLabel: deriveClosedDays(openingHoursRaw),
+    serviceMode: deriveServiceMode(tags),
     livePrices,
     rawUpdatedAt: tags.check_date || tags["fuel:date"] || tags["survey:date"] || "",
   };
@@ -744,13 +989,17 @@ function parseNumericPrice(value) {
   return Math.round(numeric);
 }
 
+function normalizeDisplayText(value) {
+  return String(value ?? "").normalize("NFKC").trim();
+}
+
 function buildAddress(tags) {
   const joined = [
-    tags["addr:province"],
-    tags["addr:city"],
-    tags["addr:suburb"],
-    tags["addr:street"],
-    tags["addr:housenumber"],
+    normalizeDisplayText(tags["addr:province"]),
+    normalizeDisplayText(tags["addr:city"]),
+    normalizeDisplayText(tags["addr:suburb"]),
+    normalizeDisplayText(tags["addr:street"]),
+    normalizeDisplayText(tags["addr:housenumber"]),
   ]
     .filter(Boolean)
     .join("");
@@ -759,17 +1008,116 @@ function buildAddress(tags) {
     return joined;
   }
 
-  return tags["addr:full"] || tags.address || "住所情報なし";
+  return normalizeDisplayText(tags["addr:full"]) || normalizeDisplayText(tags.address) || "住所情報なし";
 }
 
 function deriveOpenStatus(tags) {
-  if (tags.opening_hours === "24/7") {
+  const openingHours = normalizeDisplayText(tags.opening_hours);
+
+  if (openingHours === "24/7") {
     return "24時間営業";
   }
-  if (tags.opening_hours) {
+  if (openingHours) {
     return "営業時間あり";
   }
   return "営業時間要確認";
+}
+
+function formatOpeningHoursLabel(openingHoursRaw) {
+  if (!openingHoursRaw) {
+    return "営業時間情報なし";
+  }
+
+  return openingHoursRaw === "24/7" ? "24時間営業" : openingHoursRaw;
+}
+
+function deriveClosedDays(openingHoursRaw) {
+  if (!openingHoursRaw) {
+    return "要確認";
+  }
+
+  if (openingHoursRaw === "24/7" || /\bMo-Su\b/i.test(openingHoursRaw)) {
+    return "なし";
+  }
+
+  const days = [];
+  const clauses = openingHoursRaw.split(/\s*;\s*/).filter(Boolean);
+
+  for (const clause of clauses) {
+    if (!/\b(?:off|closed)\b/i.test(clause)) {
+      continue;
+    }
+
+    const matches = clause.match(/\b(?:Mo|Tu|We|Th|Fr|Sa|Su|PH)(?:-(?:Mo|Tu|We|Th|Fr|Sa|Su))?\b/g) || [];
+    for (const match of matches) {
+      for (const day of expandOpeningDayRange(match)) {
+        if (!days.includes(day)) {
+          days.push(day);
+        }
+      }
+    }
+  }
+
+  if (!days.length) {
+    return "要確認";
+  }
+
+  return days.map((day) => OPENING_DAY_LABELS[day] || day).join("・");
+}
+
+function expandOpeningDayRange(token) {
+  if (token === "PH") {
+    return ["PH"];
+  }
+
+  if (!token.includes("-")) {
+    return [token];
+  }
+
+  const [start, end] = token.split("-");
+  const startIndex = OPENING_DAY_ORDER.indexOf(start);
+  const endIndex = OPENING_DAY_ORDER.indexOf(end);
+
+  if (startIndex === -1 || endIndex === -1) {
+    return [];
+  }
+
+  if (startIndex <= endIndex) {
+    return OPENING_DAY_ORDER.slice(startIndex, endIndex + 1);
+  }
+
+  return [...OPENING_DAY_ORDER.slice(startIndex), ...OPENING_DAY_ORDER.slice(0, endIndex + 1)];
+}
+
+function deriveServiceMode(tags) {
+  const directValue = normalizeDisplayText(tags.self_service || tags.self || tags.service || tags.attended);
+  const normalizedValue = directValue.toLowerCase();
+  const normalizedName = normalizeDisplayText(tags.name).toLowerCase();
+
+  if (
+    normalizedValue === "yes" ||
+    normalizedValue === "true" ||
+    normalizedValue === "1" ||
+    normalizedValue.includes("self") ||
+    normalizedValue.includes("セルフ") ||
+    normalizedName.includes("セルフ")
+  ) {
+    return "セルフ";
+  }
+
+  if (
+    normalizedValue === "no" ||
+    normalizedValue === "false" ||
+    normalizedValue === "0" ||
+    normalizedValue.includes("full") ||
+    normalizedValue.includes("staff") ||
+    normalizedValue.includes("フルサービス") ||
+    normalizedName.includes("フルサービス")
+  ) {
+    return "スタッフ対応";
+  }
+
+  return "要確認";
 }
 
 function guessBrand(name) {
@@ -964,10 +1312,11 @@ function resolvePricing(station, formValues) {
   if (Number.isFinite(liveBasePrice)) {
     return {
       pricePerLiter: Math.max(Math.round(liveBasePrice - appliedDiscount), 1),
-      priceSourceLabel: "実データ",
+      priceSourceLabel: "現地価格",
       isEstimatedPrice: false,
       updatedLabel: station.rawUpdatedAt ? formatDate(station.rawUpdatedAt) : "更新時刻不明",
       updatedAtWeight: station.rawUpdatedAt ? Date.parse(station.rawUpdatedAt) || 0 : 0,
+      priceSourceKind: "actual",
     };
   }
 
@@ -1022,9 +1371,9 @@ function selectKnownPriceCandidate(prices, updatedAtMap, targetPriceType, exactL
     }
 
     return buildPriceCandidate(
-      Math.max(Math.round(convertPriceByType(sourcePrice, sourceType, targetPriceType)), 1),
+      convertPriceByType(sourcePrice, sourceType, targetPriceType),
       sourceType === targetPriceType ? exactLabel : adjustedLabel,
-      "actual",
+      sourceType === targetPriceType ? "actual" : "market",
       updatedAtMap?.[sourceType] || ""
     );
   }
@@ -1124,164 +1473,105 @@ function renderLoadingCard() {
 }
 
 function renderResults() {
-  renderSummary();
-  renderBanner();
-  renderMapPanel();
-
   if (state.loading) {
+    elements.recommendedResultPanel.innerHTML = "";
+    elements.comparisonCarouselPanel.innerHTML = "";
+    elements.resultsList.classList.remove("is-mobile-list-hidden");
     elements.resultsList.innerHTML = renderLoadingCard();
-    return;
-    elements.resultsList.innerHTML = `
-      <article class="loading-card">
-        <strong>検索中</strong>
-        <p>${escapeHtml(state.loadingMessage || "データを取得しています…")}</p>
-      </article>
-    `;
+    elements.resultMapPanel.innerHTML = "";
+    closeMobileMapSheet();
     return;
   }
 
   if (state.errorMessage) {
+    elements.recommendedResultPanel.innerHTML = "";
+    elements.comparisonCarouselPanel.innerHTML = "";
+    elements.resultsList.classList.remove("is-mobile-list-hidden");
     elements.resultsList.innerHTML = `
       <article class="empty-card">
         <h3>検索に失敗しました</h3>
         <p>${escapeHtml(state.errorMessage)}</p>
       </article>
     `;
+    elements.resultMapPanel.innerHTML = "";
+    closeMobileMapSheet();
     return;
   }
 
   if (!state.results.length) {
+    elements.recommendedResultPanel.innerHTML = "";
+    elements.comparisonCarouselPanel.innerHTML = "";
+    elements.resultsList.classList.remove("is-mobile-list-hidden");
     elements.resultsList.innerHTML = `
       <article class="empty-card">
-        <h3>まだ検索していません</h3>
-        <p>現在地、燃費、給油量を入力すると、移動コスト込みで比較できます。</p>
+        <h3>未検索</h3>
+        <p>現在地と条件を入れて検索してください。</p>
       </article>
     `;
+    elements.resultMapPanel.innerHTML = "";
+    closeMobileMapSheet();
     return;
   }
 
-  const sorted = sortResults(state.results, state.sort);
+  const visibleResults = getVisibleResults();
   const detailMode = state.lastSearch?.detailMode || "simple";
+  const showMobileCarousel = isMobileViewport() && visibleResults.length;
 
-  elements.resultsList.innerHTML = sorted
-    .map((station, index) => renderResultCard(station, index + 1, detailMode))
-    .join("");
+  elements.recommendedResultPanel.innerHTML = "";
+
+  elements.comparisonCarouselPanel.innerHTML = showMobileCarousel
+    ? renderComparisonCarousel(visibleResults, detailMode)
+    : "";
+
+  if (isMobileViewport()) {
+    elements.resultsList.classList.toggle("is-mobile-list-hidden", true);
+    elements.resultsList.innerHTML = "";
+  } else {
+    elements.resultsList.classList.remove("is-mobile-list-hidden");
+    elements.resultsList.innerHTML = visibleResults
+      .map((station, index) =>
+        renderResultCard(station, index + 1, detailMode, {
+          compact: false,
+          hidden: false,
+        })
+      )
+      .join("");
+  }
+
+  renderMapPanel(visibleResults);
 }
 
-function renderSummary() {
-  if (!state.lastSearch) {
-    elements.searchSummary.className = "search-summary summary-empty";
-    elements.searchSummary.textContent =
-      "条件を入力して検索すると、実質総コスト順のランキングを表示します。";
-    return;
-  }
-
-  const search = state.lastSearch;
-  const meta = [
-    FUEL_LABELS[search.fuelType],
-    `燃費 ${search.efficiency}km/L`,
-    `${search.liters}L 給油`,
-    PRICE_TYPE_LABELS[search.priceType],
-    `${search.radiusKm}km 圏内`,
-    `時間コスト ${search.includeTimeCost ? "ON" : "OFF"}`,
-  ];
-
-  if (search.includeTimeCost) {
-    meta.push(`時給 ${formatCurrency(search.hourlyWage)}/h`);
-  }
-
-  elements.searchSummary.className = "search-summary";
-  elements.searchSummary.innerHTML = `
-    <p class="summary-title">現在地ベースで ${state.results.length} 件を比較</p>
-    <div class="summary-meta">
-      ${meta.map((item) => `<span class="meta-chip">${escapeHtml(item)}</span>`).join("")}
-      <span class="meta-chip">${escapeHtml(state.locationLabel)}</span>
-    </div>
+function renderComparisonCarousel(stations, detailMode) {
+  return `
+    <section class="comparison-carousel-panel">
+      <div class="comparison-carousel-head">
+        <strong>比較</strong>
+      </div>
+      <div class="comparison-carousel-frame">
+        <span class="comparison-edge-arrow comparison-edge-arrow-left" aria-hidden="true">←</span>
+        <div class="comparison-carousel-track" aria-label="比較結果一覧">
+          ${stations
+            .map((station, index) =>
+              renderResultCard(station, index + 1, detailMode, {
+                compact: true,
+                hidden: false,
+              })
+            )
+            .join("")}
+        </div>
+        <span class="comparison-edge-arrow comparison-edge-arrow-right" aria-hidden="true">→</span>
+      </div>
+    </section>
   `;
 }
-
-function renderBanner() {
-  if (!state.lastSearch || !state.results.length) {
-    elements.resultsBanner.innerHTML = "";
-    return;
-  }
-
-  const best = [...state.results].sort((a, b) => a.totalCost - b.totalCost)[0];
-  const baseline = [...state.results].sort((a, b) => a.durationMinutes - b.durationMinutes)[0];
-  const savings = baseline.totalCost - best.totalCost;
-  const hints = [];
-
-  if (best.id === baseline.id || savings < 60) {
-    hints.push({
-      kind: "warning",
-      title: "近場利用が有力です",
-      body: "最安値を追っても節約額は小さく、最短時間のスタンド利用が合理的です。",
-    });
-  } else {
-    hints.push({
-      kind: "positive",
-      title: "今回の条件では遠回りする価値があります",
-      body: `${best.name} は最短時間の候補より ${formatCurrency(
-        savings
-      )} 低く、移動込みでもお得です。`,
-    });
-  }
-
-  if (state.lastSearch.liters <= 5) {
-    hints.push({
-      kind: "muted",
-      title: "少量給油の傾向",
-      body: "5L 前後では単価差より移動コストが効きやすく、近場の優位が出やすくなります。",
-    });
-  } else if (state.lastSearch.liters >= 20) {
-    hints.push({
-      kind: "muted",
-      title: "今回の給油量",
-      body: "20L 以上では単価差の影響が大きくなり、少し遠い店舗が逆転しやすくなります。",
-    });
-  }
-
-  if (state.dataSource !== "live" && state.priceCoverage.actual === 0 && state.priceCoverage.market === 0) {
-    hints.push({
-      kind: "muted",
-      title: "価格データについて",
-      body:
-        state.dataSource === "demo"
-          ? "店舗は現在地周辺の実データを優先し、価格は MVP 用の推定価格で比較しています。"
-          : "価格が取得できた店舗は実データ、未取得の店舗は推定価格で補完しています。",
-    });
-  }
-
-  const coverageSummary = `\u5b9f\u4fa1\u683c ${state.priceCoverage.actual}\u4ef6 / \u5730\u57df\u76f8\u5834 ${state.priceCoverage.market}\u4ef6 / \u63a8\u5b9a ${state.priceCoverage.estimated}\u4ef6`;
-  hints.push({
-    kind: state.priceCoverage.estimated > 0 ? "muted" : "positive",
-    title: "\u4fa1\u683c\u30bd\u30fc\u30b9",
-    body:
-      state.priceCoverage.estimated > 0
-        ? `${coverageSummary}\u3002\u63a8\u5b9a\u306f\u88dc\u52a9\u7684\u306a\u5834\u5408\u3060\u3051\u4f7f\u3063\u3066\u3044\u307e\u3059\u3002`
-        : `${coverageSummary}\u3002\u4eca\u56de\u306f\u63a8\u5b9a\u4fa1\u683c\u3092\u4f7f\u3063\u3066\u3044\u307e\u305b\u3093\u3002`,
-  });
-
-  elements.resultsBanner.innerHTML = hints
-    .map(
-      (hint) => `
-      <article class="banner-card banner-${hint.kind}">
-        <strong>${escapeHtml(hint.title)}</strong>
-        <p>${escapeHtml(hint.body)}</p>
-      </article>
-    `
-    )
-    .join("");
-}
-
-function renderMapPanel() {
-  if (!state.lastSearch || !state.results.length) {
+function renderMapPanel(visibleResults = getVisibleResults()) {
+  if (!state.lastSearch || !visibleResults.length) {
     elements.resultMapPanel.innerHTML = "";
     return;
   }
 
   const activeStation =
-    state.results.find((station) => station.id === state.activeMapStationId) || state.results[0];
+    visibleResults.find((station) => station.id === state.activeMapStationId) || visibleResults[0];
 
   if (!activeStation) {
     elements.resultMapPanel.innerHTML = "";
@@ -1292,11 +1582,23 @@ function renderMapPanel() {
   const googleMapsUrl = buildGoogleMapsUrl(activeStation);
   const mapEmbedUrl = buildMapEmbedUrl(activeStation);
 
+  if (isMobileViewport()) {
+    elements.resultMapPanel.innerHTML = "";
+    if (state.mobileResultsMode === "map-sheet") {
+      openMobileMapSheet(activeStation, mapEmbedUrl, appleMapsUrl, googleMapsUrl);
+    } else {
+      closeMobileMapSheet();
+    }
+    return;
+  }
+
+  closeMobileMapSheet();
+
   elements.resultMapPanel.innerHTML = `
     <section class="map-panel">
       <div class="map-panel-head">
         <div class="map-panel-copy">
-          <strong>${escapeHtml(activeStation.name)} の場所</strong>
+          <strong>${escapeHtml(activeStation.name)} の地図</strong>
           <p>${escapeHtml(activeStation.address)}</p>
         </div>
         <div class="map-panel-controls">
@@ -1306,7 +1608,7 @@ function renderMapPanel() {
           ${
             isMobileViewport()
               ? `<button type="button" class="detail-button secondary" data-toggle-map-panel="true">${
-                  state.isMapExpanded ? "地図を閉じる" : "地図を表示"
+                  state.isMapExpanded ? "閉じる" : "地図"
                 }</button>`
               : ""
           }
@@ -1325,10 +1627,10 @@ function renderMapPanel() {
       }
       <div class="map-actions">
         <a class="map-button map-button-primary" href="${escapeHtml(appleMapsUrl)}" target="_blank" rel="noreferrer">
-          Appleマップで開く
+          Appleマップ
         </a>
         <a class="map-button map-button-secondary" href="${escapeHtml(googleMapsUrl)}" target="_blank" rel="noreferrer">
-          Googleマップで開く
+          Googleマップ
         </a>
       </div>
     </section>
@@ -1380,9 +1682,15 @@ function sortResults(results, sortKey) {
   return ordered;
 }
 
-function renderResultCard(station, displayRank, detailMode) {
+function getVisibleResults() {
+  return sortResults(state.results, state.sort).slice(0, MAX_VISIBLE_RESULTS);
+}
+
+function renderResultCard(station, displayRank, detailMode, options = {}) {
+  const compact = options.compact;
+  const hidden = options.hidden;
   const detailSection =
-    detailMode === "detailed"
+    detailMode === "detailed" && !compact
       ? `
         <div class="result-detail">
           ${renderDetailRows(station)}
@@ -1391,7 +1699,9 @@ function renderResultCard(station, displayRank, detailMode) {
       : "";
 
   return `
-    <article class="result-card ${displayRank === 1 ? "top-ranked" : ""}">
+    <article class="result-card ${displayRank === 1 ? "top-ranked" : ""} ${compact ? "result-card-compact" : ""} ${
+      hidden ? "result-card-hidden-mobile" : ""
+    }">
       <div class="card-header">
         <div class="rank-block">
           <div class="rank-badge">#${displayRank}</div>
@@ -1401,7 +1711,8 @@ function renderResultCard(station, displayRank, detailMode) {
               <span class="card-badge ${station.openStatus === "24時間営業" ? "badge-open" : "badge-muted"}">
                 ${escapeHtml(station.openStatus)}
               </span>
-              <span class="card-badge badge-muted">${escapeHtml(station.brand)}</span>
+              <span class="card-badge badge-muted">ブランド ${escapeHtml(station.brandLabel)}</span>
+              <span class="card-badge badge-muted">${escapeHtml(station.serviceMode)}</span>
               <span class="card-badge ${station.isEstimatedPrice ? "badge-estimated" : "badge-muted"}">
                 ${escapeHtml(station.priceSourceLabel)}
               </span>
@@ -1442,12 +1753,12 @@ function renderResultCard(station, displayRank, detailMode) {
           }</span>
         </div>
         <div class="metric-tile metric-secondary">
-          <span class="metric-label">更新時刻</span>
+          <span class="metric-label">価格更新時刻</span>
           <span class="metric-value">${escapeHtml(station.updatedLabel)}</span>
         </div>
       </div>
 
-      <p class="result-note">${escapeHtml(station.reason)}</p>
+      <p class="result-note">${escapeHtml(compact ? station.recommendation : station.reason)}</p>
       ${detailSection}
 
       <div class="card-footer">
@@ -1459,7 +1770,7 @@ function renderResultCard(station, displayRank, detailMode) {
             地図に表示
           </button>
           <button type="button" class="detail-button" data-station-id="${escapeHtml(station.id)}">
-            内訳を見る
+            詳細を見る
           </button>
         </div>
       </div>
@@ -1473,11 +1784,17 @@ function renderDetailRows(station) {
     <div class="detail-row"><span>給油代</span><strong>${formatCurrency(station.fuelingCost)}</strong></div>
     <div class="detail-row"><span>移動燃料コスト</span><strong>${formatCurrency(station.driveFuelCost)}</strong></div>
     <div class="detail-row"><span>時間コスト</span><strong>${timeValue}</strong></div>
-    <div class="detail-row"><span>往復移動で消費する燃料</span><strong>${station.driveFuelLiters.toFixed(2)}L</strong></div>
+    <div class="detail-row"><span>移動で消費する燃料量</span><strong>${station.driveFuelLiters.toFixed(2)}L</strong></div>
   `;
 }
 
 function handleResultCardClick(event) {
+  const openSearchPanelTrigger = event.target.closest("[data-open-search-panel]");
+  if (openSearchPanelTrigger) {
+    openSearchDialog();
+    return;
+  }
+
   const mapPanelToggle = event.target.closest("[data-toggle-map-panel]");
   if (mapPanelToggle) {
     state.isMapExpanded = !state.isMapExpanded;
@@ -1488,9 +1805,12 @@ function handleResultCardClick(event) {
   const mapTrigger = event.target.closest("[data-map-station-id]");
   if (mapTrigger) {
     state.activeMapStationId = mapTrigger.dataset.mapStationId;
-    state.isMapExpanded = true;
+    if (isMobileViewport()) {
+      state.mobileResultsMode = "map-sheet";
+    } else {
+      state.isMapExpanded = true;
+    }
     renderMapPanel();
-    elements.resultMapPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
     return;
   }
 
@@ -1505,9 +1825,54 @@ function handleResultCardClick(event) {
   }
 
   state.activeMapStationId = station.id;
-  state.isMapExpanded = true;
-  renderMapPanel();
+  if (!isMobileViewport()) {
+    state.isMapExpanded = true;
+    renderMapPanel();
+  }
   renderDialog(station);
+}
+
+function handleMobileMapSheetClick(event) {
+  const closeTrigger = event.target.closest("[data-close-mobile-map]");
+  if (!closeTrigger) {
+    return;
+  }
+
+  closeMobileMapSheet();
+  if (state.results.length) {
+    state.mobileResultsMode = "recommended";
+    renderResults();
+  }
+}
+
+function handleMobileMapSheetClose() {
+  if (!isMobileViewport()) {
+    return;
+  }
+
+  if (state.mobileResultsMode === "map-sheet") {
+    state.mobileResultsMode = "recommended";
+    renderResults();
+  }
+}
+
+function handleDialogClick(event) {
+  const closeTrigger = event.target.closest("[data-close-station-dialog]");
+  if (!closeTrigger) {
+    return;
+  }
+
+  if (elements.stationDialog.open) {
+    elements.stationDialog.close();
+  }
+}
+
+function handleStationDialogBackdropClick(event) {
+  if (event.target !== elements.stationDialog) {
+    return;
+  }
+
+  elements.stationDialog.close();
 }
 
 function renderDialog(station) {
@@ -1515,12 +1880,15 @@ function renderDialog(station) {
     <div class="dialog-content">
       <div class="dialog-title-row">
         <div>
-          <p class="section-kicker">Station Detail</p>
+          <p class="section-kicker">Detail</p>
           <h3>${escapeHtml(station.name)}</h3>
         </div>
-        <div class="cost-block">
-          <p class="cost-label">実質総コスト</p>
-          <p class="cost-total">${formatCurrency(station.totalCost)}</p>
+        <div class="dialog-head-actions">
+          <div class="cost-block">
+            <p class="cost-label">実質総コスト</p>
+            <p class="cost-total">${formatCurrency(station.totalCost)}</p>
+          </div>
+          <button type="button" class="ghost-button dialog-close-button" data-close-station-dialog="true">閉じる</button>
         </div>
       </div>
 
@@ -1576,17 +1944,22 @@ function renderDialog(station) {
         <a class="map-button map-button-primary" href="${escapeHtml(
           buildAppleMapsUrl(station)
         )}" target="_blank" rel="noreferrer">
-          Appleマップで開く
+          Appleマップ
         </a>
         <a class="map-button map-button-secondary" href="${escapeHtml(
           buildGoogleMapsUrl(station)
         )}" target="_blank" rel="noreferrer">
-          Googleマップで開く
+          Googleマップ
         </a>
       </div>
 
       <div class="result-detail">
         <div class="detail-row"><span>営業状況</span><strong>${escapeHtml(station.openStatus)}</strong></div>
+        <div class="detail-row"><span>ブランド</span><strong>${escapeHtml(station.brandLabel)}</strong></div>
+        <div class="detail-row"><span>運営会社</span><strong>${escapeHtml(station.operator)}</strong></div>
+        <div class="detail-row"><span>給油方式</span><strong>${escapeHtml(station.serviceMode)}</strong></div>
+        <div class="detail-row"><span>営業時間</span><strong>${escapeHtml(station.openingHoursLabel)}</strong></div>
+        <div class="detail-row"><span>休業日</span><strong>${escapeHtml(station.closedDaysLabel)}</strong></div>
         <div class="detail-row"><span>住所</span><strong>${escapeHtml(station.address)}</strong></div>
         <div class="detail-row"><span>価格種別</span><strong>${escapeHtml(
           PRICE_TYPE_LABELS[state.lastSearch?.priceType || "cash"]
@@ -1601,6 +1974,54 @@ function renderDialog(station) {
       elements.stationDialog.close();
     }
     elements.stationDialog.showModal();
+  }
+}
+
+function openMobileMapSheet(station, mapEmbedUrl, appleMapsUrl, googleMapsUrl) {
+  elements.mobileMapSheetContent.innerHTML = `
+    <div class="mobile-map-sheet-inner">
+      <div class="mobile-map-sheet-grabber" aria-hidden="true"></div>
+      <div class="mobile-map-sheet-head">
+        <div>
+          <p class="section-kicker">Map</p>
+          <h3>${escapeHtml(station.name)}</h3>
+          <p class="mobile-map-sheet-address">${escapeHtml(station.address)}</p>
+        </div>
+        <button type="button" class="ghost-button mobile-map-close" data-close-mobile-map="true">閉じる</button>
+      </div>
+      <div class="mobile-map-sheet-meta">
+        <span class="card-badge badge-muted">${formatDistance(station.distanceKm)}</span>
+        <span class="card-badge badge-muted">${formatMinutes(station.durationMinutes)}</span>
+        <span class="card-badge badge-muted">${formatCurrency(station.totalCost)}</span>
+      </div>
+      <iframe
+        class="map-frame mobile-map-frame"
+        title="${escapeHtml(station.name)} の地図"
+        src="${escapeHtml(mapEmbedUrl)}"
+        loading="lazy"
+        referrerpolicy="no-referrer-when-downgrade"
+      ></iframe>
+      <div class="map-actions mobile-map-actions">
+        <a class="map-button map-button-primary" href="${escapeHtml(appleMapsUrl)}" target="_blank" rel="noreferrer">
+          Appleマップ
+        </a>
+        <a class="map-button map-button-secondary" href="${escapeHtml(googleMapsUrl)}" target="_blank" rel="noreferrer">
+          Googleマップ
+        </a>
+      </div>
+    </div>
+  `;
+
+  if (typeof elements.mobileMapSheet.showModal === "function") {
+    if (!elements.mobileMapSheet.open) {
+      elements.mobileMapSheet.showModal();
+    }
+  }
+}
+
+function closeMobileMapSheet() {
+  if (elements.mobileMapSheet.open) {
+    elements.mobileMapSheet.close();
   }
 }
 
@@ -1619,12 +2040,17 @@ function buildFallbackStations(location) {
       id: `fallback-${index}`,
       name: seed.name,
       brand: seed.brand,
+      brandLabel: seed.brand,
+      operator: "要確認",
       address: "周辺価格 API 未接続時のデモ候補",
       lat: coords.lat,
       lng: coords.lng,
       geoDistanceKm: seed.km,
       openStatus: "営業時間要確認",
-      openingHours: "営業時間情報なし",
+      openingHoursRaw: "",
+      openingHoursLabel: "営業時間情報なし",
+      closedDaysLabel: "要確認",
+      serviceMode: seed.name.includes("セルフ") ? "セルフ" : "要確認",
       livePrices: {
         regular: null,
         premium: null,
@@ -1686,19 +2112,32 @@ function hashValue(input) {
   }, 7);
 }
 
-function formatCurrency(value) {
-  return `${Math.round(value).toLocaleString("ja-JP")}\u5186`;
-}
-
 function formatDistance(value) {
-  return `${value.toFixed(value >= 10 ? 0 : 1)}km`;
+  if (!Number.isFinite(value)) {
+    return "-";
+  }
+
+  return value < 1 ? `${Math.round(value * 1000)}m` : `${value.toFixed(1)}km`;
 }
 
 function formatMinutes(value) {
-  const rounded = Math.max(1, Math.round(value));
-  return `${rounded}\u5206`;
+  if (!Number.isFinite(value)) {
+    return "-";
+  }
+
+  const rounded = Math.max(0, Math.round(value));
+  if (rounded < 60) {
+    return `${rounded}分`;
+  }
+
+  const hours = Math.floor(rounded / 60);
+  const minutes = rounded % 60;
+  return minutes === 0 ? `${hours}時間` : `${hours}時間${minutes}分`;
 }
 
+function formatCurrency(value) {
+  return `${Math.round(value).toLocaleString("ja-JP")}\u5186`;
+}
 function formatDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -1754,20 +2193,15 @@ function parseDateInfo(value) {
 function buildMobileSearchSummary(search) {
   const parts = [
     FUEL_LABELS[search.fuelType],
-    `燃費 ${search.efficiency}km/L`,
     `${search.liters}L`,
     `${search.radiusKm}km`,
   ];
 
   if (search.includeTimeCost) {
-    parts.push(`時間ON`);
+    parts.push("時間ON");
   }
 
   return parts.join(" / ");
-}
-
-function isMobileViewport() {
-  return window.matchMedia("(max-width: 720px)").matches;
 }
 
 function escapeHtml(value) {

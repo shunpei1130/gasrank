@@ -9,10 +9,10 @@ This repository includes `.github/workflows/pages.yml` so the static frontend is
 Important:
 
 - GitHub Pages can serve static files only.
-- The current price enrichment endpoint is `/api/prices`, which is implemented in `server.js`.
+- The current backend endpoints are `/api/prices` and `/api/overpass`, both implemented in `server.js`.
 - `server.js` does not run on GitHub Pages.
 
-If you want the Pages site to use real municipality price data, deploy the backend separately and set `window.GASRANK_API_BASE` in `config.js` to that backend origin.
+If you want the static site to use real municipality price data and Overpass search, deploy the backend separately and set `window.GASRANK_API_BASE` in `config.js` to that backend origin.
 
 Example:
 
