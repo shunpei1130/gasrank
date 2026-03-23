@@ -12,15 +12,15 @@ const DEFAULT_FORM = {
 };
 
 const FUEL_LABELS = {
-  regular: "レギュラー",
-  premium: "ハイオク",
-  diesel: "軽油",
+  regular: "\u30ec\u30ae\u30e5\u30e9\u30fc",
+  premium: "\u30cf\u30a4\u30aa\u30af",
+  diesel: "\u8efd\u6cb9",
 };
 
 const PRICE_TYPE_LABELS = {
-  cash: "現金",
-  member: "会員",
-  appMember: "アプリ会員",
+  cash: "\u73fe\u91d1",
+  member: "\u4f1a\u54e1",
+  appMember: "\u30a2\u30d7\u30ea\u4f1a\u54e1",
 };
 
 const BASE_PRICES = {
@@ -58,7 +58,7 @@ const state = {
   loadingMessage: "",
   errorMessage: "",
   location: null,
-  locationLabel: "未取得",
+  locationLabel: "\u672a\u53d6\u5f97",
   results: [],
   lastSearch: null,
   sort: "total",
@@ -260,7 +260,9 @@ function setLoading(loading, message = "") {
   elements.searchButton.disabled = loading;
   elements.locateButton.disabled = loading;
   elements.toggleSearchPanelButton.disabled = loading;
-  elements.searchButton.textContent = loading ? "検索中…" : "実質最安を検索";
+  elements.searchButton.textContent = loading
+    ? "\u691c\u7d22\u4e2d\u2026"
+    : "\u5b9f\u8cea\u6700\u5b89\u3092\u691c\u7d22";
   renderSearchPanel();
   renderResults();
 }
@@ -1042,7 +1044,7 @@ function buildPriceCandidate(pricePerLiter, priceSourceLabel, priceSourceKind, u
     priceSourceLabel,
     priceSourceKind,
     isEstimatedPrice: priceSourceKind === "estimated",
-    updatedLabel: updatedAtRaw ? formatKnownDate(updatedAtRaw) : "譖ｴ譁ｰ譎ょ綾荳肴・",
+    updatedLabel: updatedAtRaw ? formatKnownDate(updatedAtRaw) : "更新時刻不明",
     updatedAtWeight: getDateWeight(updatedAtRaw),
   };
 }
@@ -1685,7 +1687,7 @@ function hashValue(input) {
 }
 
 function formatCurrency(value) {
-  return `${Math.round(value).toLocaleString("ja-JP")}円`;
+  return `${Math.round(value).toLocaleString("ja-JP")}\u5186`;
 }
 
 function formatDistance(value) {
@@ -1694,7 +1696,7 @@ function formatDistance(value) {
 
 function formatMinutes(value) {
   const rounded = Math.max(1, Math.round(value));
-  return `${rounded}分`;
+  return `${rounded}\u5206`;
 }
 
 function formatDate(value) {

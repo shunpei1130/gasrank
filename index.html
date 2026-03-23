@@ -3,31 +3,31 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>??????????????? | GasRank ??????????</title>
+    <title>ガソリン最安を実質コストで比較 | GasRank ガソリンスタンド検索</title>
     <meta
       name="description"
-      content="?????????????????????????????????????????????????????????????????????????"
+      content="ガソリン最安を探したい人向けのガソリンスタンド検索。現在地から近くのスタンドを、ガソリン価格・距離・時間・燃費まで含めた実質コストで比較できます。"
     />
     <meta
       name="keywords"
-      content="??????,????,????????,??????,???? ??,???????? ??,??????,GasRank"
+      content="ガソリン最安,ガソリン,ガソリンスタンド,ガソリン価格,ガソリン 安い,ガソリンスタンド 検索,最安ガソリン,GasRank"
     />
     <meta name="robots" content="index,follow,max-image-preview:large" />
-    <link rel="canonical" href="https://shunpei1130.github.io/gasrank/" />
+    <link rel="canonical" href="https://gasrank.vercel.app/" />
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="ja_JP" />
     <meta property="og:site_name" content="GasRank" />
-    <meta property="og:title" content="??????????????? | GasRank" />
+    <meta property="og:title" content="ガソリン最安を実質コストで比較 | GasRank" />
     <meta
       property="og:description"
-      content="???????????????????????????????????????????"
+      content="ガソリン最安を価格だけでなく距離と時間も含めて比較できるガソリンスタンド検索サービス。"
     />
-    <meta property="og:url" content="https://shunpei1130.github.io/gasrank/" />
+    <meta property="og:url" content="https://gasrank.vercel.app/" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="??????????????? | GasRank" />
+    <meta name="twitter:title" content="ガソリン最安を実質コストで比較 | GasRank" />
     <meta
       name="twitter:description"
-      content="???????????????????????????????????????????"
+      content="現在地から近くのガソリンスタンドを、価格・距離・時間・燃費まで含めた実質コストで比較。"
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -41,9 +41,9 @@
         "@context": "https://schema.org",
         "@type": "WebSite",
         "name": "GasRank",
-        "url": "https://shunpei1130.github.io/gasrank/",
+        "url": "https://gasrank.vercel.app/",
         "inLanguage": "ja",
-        "description": "????????????????????????????????"
+        "description": "ガソリン最安を実質コストで比較できるガソリンスタンド検索サービス"
       }
     </script>
     <script type="application/ld+json">
@@ -53,9 +53,9 @@
         "name": "GasRank",
         "applicationCategory": "TravelApplication",
         "operatingSystem": "Web",
-        "url": "https://shunpei1130.github.io/gasrank/",
+        "url": "https://gasrank.vercel.app/",
         "inLanguage": "ja",
-        "description": "??????????????????????????????????????Web???"
+        "description": "ガソリン価格、距離、時間、燃費をもとにガソリンスタンドの実質コストを比較するWebアプリ"
       }
     </script>
     <script src="./config.js"></script>
@@ -71,7 +71,7 @@
           <h1>ガソリン最安を探せる GasRank</h1>
           <p class="hero-tagline">安い店ではなく、得する店を探す</p>
           <p class="hero-description">
-            現在地、燃費、給油量、時間コストをまとめて計算し、実質総コストが低い順に比較します。
+            現在地、燃費、給油量をもとに、ガソリン価格・距離・時間まで含めた実質コストで近くのガソリンスタンドを比較できます。
           </p>
           <div class="hero-start-guide">
             <span class="start-step">1</span>
@@ -81,8 +81,8 @@
         <div class="hero-status">
           <span class="status-pill status-pill-accent">MVP</span>
           <span class="status-pill">現在地ベース検索</span>
-          <span class="status-pill">移動コスト込み比較</span>
-          <span class="status-pill status-pill-soft">価格 API 未接続時は推定価格で補完</span>
+          <span class="status-pill">移動コスト比較</span>
+          <span class="status-pill status-pill-soft">価格 API が無い場合は推定価格で補完</span>
         </div>
       </header>
 
@@ -98,9 +98,7 @@
               <button type="button" id="toggleSearchPanelButton" class="ghost-button mobile-only-button">
                 条件をたたむ
               </button>
-              <button type="button" id="locateButton" class="ghost-button locate-button">
-                現在地を取得
-              </button>
+              <button type="button" id="locateButton" class="ghost-button locate-button">現在地を取得</button>
             </div>
           </div>
 
@@ -112,9 +110,7 @@
               <p id="locationText">未取得</p>
             </div>
             <p class="location-helper">現在地が未取得のままでは近隣検索できません。まず上のボタンを押してください。</p>
-            <p class="location-note">
-              位置情報は `localhost` または `https` で動作します。
-            </p>
+            <p class="location-note">位置情報は localhost または https で利用できます。</p>
           </div>
 
           <form id="searchForm" novalidate>
@@ -229,7 +225,7 @@
               </label>
 
               <fieldset class="field">
-                <legend>内訳表示</legend>
+                <legend>詳細表示</legend>
                 <div class="chip-row compact">
                   <label class="choice-chip">
                     <input type="radio" name="detailMode" value="simple" checked />
@@ -245,9 +241,7 @@
 
             <div id="validationMessage" class="validation-message" aria-live="polite"></div>
 
-            <button type="submit" id="searchButton" class="primary-button">
-              実質最安を検索
-            </button>
+            <button type="submit" id="searchButton" class="primary-button">実質最安を検索</button>
           </form>
         </section>
 
@@ -258,35 +252,24 @@
               <h2>検索結果</h2>
             </div>
             <div class="sort-tabs" id="sortTabs" role="tablist" aria-label="並び替え">
-              <button type="button" class="sort-tab active" data-sort="total">
-                実質最安順
-              </button>
-              <button type="button" class="sort-tab" data-sort="price">
-                店頭価格順
-              </button>
-              <button type="button" class="sort-tab" data-sort="duration">
-                最短時間順
-              </button>
-              <button type="button" class="sort-tab" data-sort="distance">
-                最短距離順
-              </button>
+              <button type="button" class="sort-tab active" data-sort="total">実質最安順</button>
+              <button type="button" class="sort-tab" data-sort="price">店頭価格順</button>
+              <button type="button" class="sort-tab" data-sort="duration">最短時間順</button>
+              <button type="button" class="sort-tab" data-sort="distance">最短距離順</button>
             </div>
           </div>
 
           <div id="searchSummary" class="search-summary summary-empty">
-            条件を入力して検索すると、実質総コスト順のランキングを表示します。
+            条件を入力して検索すると、ランキングと計算ロジックを表示します。
           </div>
 
           <div id="resultsBanner"></div>
-
           <div id="resultMapPanel"></div>
 
           <div id="resultsList" class="results-list">
             <article class="empty-card">
               <h3>まだ検索していません</h3>
-              <p>
-                現在地、燃費、給油量を入力すると、移動コスト込みで比較できます。
-              </p>
+              <p>現在地、油種、給油量を入力すると、近くのガソリンスタンドを実質コストで比較できます。</p>
             </article>
           </div>
         </section>
@@ -317,9 +300,7 @@
             <code>給油代 + 移動燃料コスト + 時間コスト</code>
           </div>
         </div>
-        <p class="formula-note">
-          D と T は現在地からスタンドまでの片道値です。MVP では往復前提で計算します。
-        </p>
+        <p class="formula-note">D と T は現在地からスタンドまでの片道値です。MVP では往復移動を前提に計算します。</p>
       </section>
 
       <section class="panel seo-panel">
