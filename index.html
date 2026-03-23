@@ -3,10 +3,31 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>GasRank | 実質最安ガソリン検索</title>
+    <title>??????????????? | GasRank ??????????</title>
     <meta
       name="description"
-      content="現在地、燃費、給油量から移動コスト込みで得するガソリンスタンドを探す Web アプリ"
+      content="?????????????????????????????????????????????????????????????????????????"
+    />
+    <meta
+      name="keywords"
+      content="??????,????,????????,??????,???? ??,???????? ??,??????,GasRank"
+    />
+    <meta name="robots" content="index,follow,max-image-preview:large" />
+    <link rel="canonical" href="https://shunpei1130.github.io/gasrank/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="ja_JP" />
+    <meta property="og:site_name" content="GasRank" />
+    <meta property="og:title" content="??????????????? | GasRank" />
+    <meta
+      property="og:description"
+      content="???????????????????????????????????????????"
+    />
+    <meta property="og:url" content="https://shunpei1130.github.io/gasrank/" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="??????????????? | GasRank" />
+    <meta
+      name="twitter:description"
+      content="???????????????????????????????????????????"
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -15,6 +36,28 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="./styles.css" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "GasRank",
+        "url": "https://shunpei1130.github.io/gasrank/",
+        "inLanguage": "ja",
+        "description": "????????????????????????????????"
+      }
+    </script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "GasRank",
+        "applicationCategory": "TravelApplication",
+        "operatingSystem": "Web",
+        "url": "https://shunpei1130.github.io/gasrank/",
+        "inLanguage": "ja",
+        "description": "??????????????????????????????????????Web???"
+      }
+    </script>
     <script src="./config.js"></script>
     <script defer src="./app.js"></script>
   </head>
@@ -25,11 +68,15 @@
       <header class="hero panel">
         <div class="hero-copy">
           <p class="eyebrow">Fuel Cost Intelligence</p>
-          <h1>GasRank</h1>
+          <h1>ガソリン最安を探せる GasRank</h1>
           <p class="hero-tagline">安い店ではなく、得する店を探す</p>
           <p class="hero-description">
             現在地、燃費、給油量、時間コストをまとめて計算し、実質総コストが低い順に比較します。
           </p>
+          <div class="hero-start-guide">
+            <span class="start-step">1</span>
+            <p>まず「現在地を取得」を押してください。現在地が取れると近くのスタンドを比較できます。</p>
+          </div>
         </div>
         <div class="hero-status">
           <span class="status-pill status-pill-accent">MVP</span>
@@ -46,11 +93,12 @@
               <p class="section-kicker">Search Setup</p>
               <h2>検索条件</h2>
             </div>
+            <p class="section-guide">最初に現在地を取得してから検索条件を確認してください。</p>
             <div class="search-head-actions">
               <button type="button" id="toggleSearchPanelButton" class="ghost-button mobile-only-button">
                 条件をたたむ
               </button>
-              <button type="button" id="locateButton" class="ghost-button">
+              <button type="button" id="locateButton" class="ghost-button locate-button">
                 現在地を取得
               </button>
             </div>
@@ -63,6 +111,7 @@
               <p class="location-label">現在地</p>
               <p id="locationText">未取得</p>
             </div>
+            <p class="location-helper">現在地が未取得のままでは近隣検索できません。まず上のボタンを押してください。</p>
             <p class="location-note">
               位置情報は `localhost` または `https` で動作します。
             </p>
@@ -271,6 +320,43 @@
         <p class="formula-note">
           D と T は現在地からスタンドまでの片道値です。MVP では往復前提で計算します。
         </p>
+      </section>
+
+      <section class="panel seo-panel">
+        <div class="section-head compact-head">
+          <div>
+            <p class="section-kicker">Gasoline Search Guide</p>
+            <h2>ガソリン最安を探したい人へ</h2>
+          </div>
+        </div>
+        <div class="seo-grid">
+          <article class="seo-card">
+            <h3>ガソリン最安は価格だけでは決まりません</h3>
+            <p>
+              GasRank は、ガソリン価格が安い順ではなく、現在地から近いガソリンスタンドを移動距離、移動時間、燃費、給油量まで含めた実質コストで比較します。
+            </p>
+          </article>
+          <article class="seo-card">
+            <h3>近くのガソリンスタンドをすぐ比較</h3>
+            <p>
+              位置情報を取得すると、近隣のガソリンスタンド候補を検索し、ガソリン最安候補、距離が短い店、時間がかからない店を一覧で見比べられます。
+            </p>
+          </article>
+          <article class="seo-card">
+            <h3>少量給油と満タン給油で最適解が変わる</h3>
+            <p>
+              5L や 10L の少量給油なら近場が有利になりやすく、20L 以上の給油では単価差の影響が大きくなります。ガソリン最安を探すときの判断を条件ごとに変えられます。
+            </p>
+          </article>
+        </div>
+        <div class="seo-faq">
+          <h3>よくある検索意図</h3>
+          <ul>
+            <li>ガソリン最安の店を知りたい</li>
+            <li>近くのガソリンスタンドで一番安い場所を探したい</li>
+            <li>ガソリン価格だけでなく移動コストまで含めて比較したい</li>
+          </ul>
+        </div>
       </section>
     </div>
 

@@ -1105,12 +1105,30 @@ function renderSortTabs() {
   });
 }
 
+function renderLoadingCard() {
+  return `
+    <article class="loading-card">
+      <div class="loading-card-head">
+        <span class="loading-spinner" aria-hidden="true"></span>
+        <strong>検索中</strong>
+      </div>
+      <p class="loading-card-message">${escapeHtml(state.loadingMessage || "データを取得しています…")}</p>
+      <p class="loading-card-note">10秒ほどこのままお待ちください。</p>
+      <div class="loading-progress" aria-hidden="true">
+        <span></span>
+      </div>
+    </article>
+  `;
+}
+
 function renderResults() {
   renderSummary();
   renderBanner();
   renderMapPanel();
 
   if (state.loading) {
+    elements.resultsList.innerHTML = renderLoadingCard();
+    return;
     elements.resultsList.innerHTML = `
       <article class="loading-card">
         <strong>検索中</strong>

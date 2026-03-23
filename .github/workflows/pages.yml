@@ -30,6 +30,8 @@ jobs:
           cp styles.css _site/styles.css
           cp app.js _site/app.js
           cp config.js _site/config.js
+          cp robots.txt _site/robots.txt
+          cp sitemap.xml _site/sitemap.xml
           cp .nojekyll _site/.nojekyll
 
       - name: Upload artifact

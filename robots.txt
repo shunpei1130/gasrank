@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://shunpei1130.github.io/gasrank/sitemap.xml
