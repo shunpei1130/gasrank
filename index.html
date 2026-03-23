@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GasRank | 実質最安ガソリン検索</title>
+    <meta
+      name="description"
+      content="現在地、燃費、給油量から移動コスト込みで得するガソリンスタンドを探す Web アプリ"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;800&family=Sora:wght@600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="./config.js"></script>
+    <script defer src="./app.js"></script>
+  </head>
+  <body>
+    <div class="backdrop backdrop-a"></div>
+    <div class="backdrop backdrop-b"></div>
+    <div class="page-shell">
+      <header class="hero panel">
+        <div class="hero-copy">
+          <p class="eyebrow">Fuel Cost Intelligence</p>
+          <h1>GasRank</h1>
+          <p class="hero-tagline">安い店ではなく、得する店を探す</p>
+          <p class="hero-description">
+            現在地、燃費、給油量、時間コストをまとめて計算し、実質総コストが低い順に比較します。
+          </p>
+        </div>
+        <div class="hero-status">
+          <span class="status-pill status-pill-accent">MVP</span>
+          <span class="status-pill">現在地ベース検索</span>
+          <span class="status-pill">移動コスト込み比較</span>
+          <span class="status-pill status-pill-soft">価格 API 未接続時は推定価格で補完</span>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <section class="panel search-panel" id="searchPanel">
+          <div class="section-head">
+            <div>
+              <p class="section-kicker">Search Setup</p>
+              <h2>検索条件</h2>
+            </div>
+            <div class="search-head-actions">
+              <button type="button" id="toggleSearchPanelButton" class="ghost-button mobile-only-button">
+                条件をたたむ
+              </button>
+              <button type="button" id="locateButton" class="ghost-button">
+                現在地を取得
+              </button>
+            </div>
+          </div>
+
+          <div id="searchPanelSummary" class="mobile-search-summary"></div>
+
+          <div class="location-box" id="locationBox">
+            <div>
+              <p class="location-label">現在地</p>
+              <p id="locationText">未取得</p>
+            </div>
+            <p class="location-note">
+              位置情報は `localhost` または `https` で動作します。
+            </p>
+          </div>
+
+          <form id="searchForm" novalidate>
+            <div class="form-grid">
+              <fieldset class="field">
+                <legend>油種</legend>
+                <div class="chip-row">
+                  <label class="choice-chip">
+                    <input type="radio" name="fuelType" value="regular" checked />
+                    <span>レギュラー</span>
+                  </label>
+                  <label class="choice-chip">
+                    <input type="radio" name="fuelType" value="premium" />
+                    <span>ハイオク</span>
+                  </label>
+                  <label class="choice-chip">
+                    <input type="radio" name="fuelType" value="diesel" />
+                    <span>軽油</span>
+                  </label>
+                </div>
+              </fieldset>
+
+              <label class="field">
+                <span>燃費 (km/L)</span>
+                <input
+                  type="number"
+                  name="efficiency"
+                  inputmode="decimal"
+                  min="0.1"
+                  step="0.1"
+                  value="12"
+                  placeholder="12"
+                  required
+                />
+              </label>
+
+              <label class="field">
+                <span>給油量 (L)</span>
+                <input
+                  type="number"
+                  name="liters"
+                  inputmode="decimal"
+                  min="0.1"
+                  step="0.1"
+                  value="20"
+                  placeholder="20"
+                  required
+                />
+              </label>
+
+              <fieldset class="field">
+                <legend>価格種別</legend>
+                <div class="chip-row compact">
+                  <label class="choice-chip">
+                    <input type="radio" name="priceType" value="cash" checked />
+                    <span>現金</span>
+                  </label>
+                  <label class="choice-chip">
+                    <input type="radio" name="priceType" value="member" />
+                    <span>会員</span>
+                  </label>
+                  <label class="choice-chip">
+                    <input type="radio" name="priceType" value="appMember" />
+                    <span>アプリ会員</span>
+                  </label>
+                </div>
+              </fieldset>
+
+              <fieldset class="field">
+                <legend>検索半径</legend>
+                <div class="chip-row compact">
+                  <label class="choice-chip">
+                    <input type="radio" name="radiusKm" value="3" />
+                    <span>3km</span>
+                  </label>
+                  <label class="choice-chip">
+                    <input type="radio" name="radiusKm" value="5" checked />
+                    <span>5km</span>
+                  </label>
+                  <label class="choice-chip">
+                    <input type="radio" name="radiusKm" value="10" />
+                    <span>10km</span>
+                  </label>
+                </div>
+              </fieldset>
+
+              <fieldset class="field">
+                <legend>時間コスト換算</legend>
+                <div class="chip-row compact">
+                  <label class="choice-chip">
+                    <input type="radio" name="includeTimeCost" value="on" checked />
+                    <span>ON</span>
+                  </label>
+                  <label class="choice-chip">
+                    <input type="radio" name="includeTimeCost" value="off" />
+                    <span>OFF</span>
+                  </label>
+                </div>
+              </fieldset>
+
+              <label class="field">
+                <span>時給換算 (円/h)</span>
+                <input
+                  type="number"
+                  name="hourlyWage"
+                  inputmode="numeric"
+                  min="0"
+                  step="100"
+                  value="1000"
+                  placeholder="1000"
+                />
+              </label>
+
+              <fieldset class="field">
+                <legend>内訳表示</legend>
+                <div class="chip-row compact">
+                  <label class="choice-chip">
+                    <input type="radio" name="detailMode" value="simple" checked />
+                    <span>シンプル</span>
+                  </label>
+                  <label class="choice-chip">
+                    <input type="radio" name="detailMode" value="detailed" />
+                    <span>詳細</span>
+                  </label>
+                </div>
+              </fieldset>
+            </div>
+
+            <div id="validationMessage" class="validation-message" aria-live="polite"></div>
+
+            <button type="submit" id="searchButton" class="primary-button">
+              実質最安を検索
+            </button>
+          </form>
+        </section>
+
+        <section class="panel results-panel">
+          <div class="section-head results-head">
+            <div>
+              <p class="section-kicker">Ranking</p>
+              <h2>検索結果</h2>
+            </div>
+            <div class="sort-tabs" id="sortTabs" role="tablist" aria-label="並び替え">
+              <button type="button" class="sort-tab active" data-sort="total">
+                実質最安順
+              </button>
+              <button type="button" class="sort-tab" data-sort="price">
+                店頭価格順
+              </button>
+              <button type="button" class="sort-tab" data-sort="duration">
+                最短時間順
+              </button>
+              <button type="button" class="sort-tab" data-sort="distance">
+                最短距離順
+              </button>
+            </div>
+          </div>
+
+          <div id="searchSummary" class="search-summary summary-empty">
+            条件を入力して検索すると、実質総コスト順のランキングを表示します。
+          </div>
+
+          <div id="resultsBanner"></div>
+
+          <div id="resultMapPanel"></div>
+
+          <div id="resultsList" class="results-list">
+            <article class="empty-card">
+              <h3>まだ検索していません</h3>
+              <p>
+                現在地、燃費、給油量を入力すると、移動コスト込みで比較できます。
+              </p>
+            </article>
+          </div>
+        </section>
+      </main>
+
+      <section class="panel transparency-panel">
+        <div class="section-head compact-head">
+          <div>
+            <p class="section-kicker">How It Works</p>
+            <h2>計算ロジック</h2>
+          </div>
+        </div>
+        <div class="formula-grid">
+          <div class="formula-card">
+            <span class="formula-label">給油代</span>
+            <code>P × L</code>
+          </div>
+          <div class="formula-card">
+            <span class="formula-label">移動燃料コスト</span>
+            <code>(D × 2 ÷ FE) × B</code>
+          </div>
+          <div class="formula-card">
+            <span class="formula-label">時間コスト</span>
+            <code>(T × 2 ÷ 60) × W</code>
+          </div>
+          <div class="formula-card formula-card-wide">
+            <span class="formula-label">実質総コスト</span>
+            <code>給油代 + 移動燃料コスト + 時間コスト</code>
+          </div>
+        </div>
+        <p class="formula-note">
+          D と T は現在地からスタンドまでの片道値です。MVP では往復前提で計算します。
+        </p>
+      </section>
+    </div>
+
+    <dialog id="stationDialog" class="station-dialog">
+      <div id="dialogContent"></div>
+      <form method="dialog" class="dialog-actions">
+        <button type="submit" class="ghost-button">閉じる</button>
+      </form>
+    </dialog>
+  </body>
+</html>
